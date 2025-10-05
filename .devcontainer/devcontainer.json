@@ -1,0 +1,11 @@
+{
+  "name": "Java Development Environment",
+  "image": "mcr.microsoft.com/devcontainers/java:17",
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": {},
+    "ghcr.io/devcontainers/features/gradle:1": {}
+  },
+  "settings": {
+    "terminal.integrated.defaultProfile.linux": "bash"
+  }
+}

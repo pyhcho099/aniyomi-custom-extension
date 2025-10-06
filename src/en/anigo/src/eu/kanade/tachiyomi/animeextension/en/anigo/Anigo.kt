@@ -186,4 +186,3 @@ class Anigo : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         ).reversed()
     }
 }
-

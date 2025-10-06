@@ -148,7 +148,6 @@ class Anigo : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 }
             }
         }
-
         return videoList.filter { !it.url.isNullOrEmpty() }
     }
 
@@ -180,7 +179,6 @@ class Anigo : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun List<Video>.sort(): List<Video> {
         val preferredQuality = preferences.getString("preferred_quality", "1080")
         val quality = preferredQuality ?: "1080"
-
         return sortedWith(
             compareBy { it.quality.contains(quality, ignoreCase = true) },
         ).reversed()

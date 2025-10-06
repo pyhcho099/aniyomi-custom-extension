@@ -17,7 +17,6 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
-import org.jsoup.nodes.Element
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -25,7 +24,6 @@ class Anigo : ConfigurableAnimeSource, AnimeHttpSource() {
 
     override val name = "AniGo"
 
-    // Corrected baseUrl - removed trailing space
     override val baseUrl = "https://anigo.to"
 
     override val lang = "en"
@@ -39,7 +37,6 @@ class Anigo : ConfigurableAnimeSource, AnimeHttpSource() {
     }
 
     // ============================== Popular ===============================
-    // Uses the observed selector from the first code snippet
     override fun popularAnimeRequest(page: Int): Request = GET("$baseUrl/home?page=$page", headers)
 
     override fun popularAnimeParse(response: Response): AnimesPage {
@@ -47,24 +44,19 @@ class Anigo : ConfigurableAnimeSource, AnimeHttpSource() {
         val animeList = document.select("div.film_list-wrap div.flw-item").mapNotNull { element ->
             runCatching {
                 SAnime.create().apply {
-                    // Get URL from the first anchor tag within the item
-                    val urlElement = element.selectFirst("a") ?: throw Exception("No anchor found for anime item")
+                    val urlElement = element.selectFirst("a") ?: throw Exception("No anchor found")
                     setUrlWithoutDomain(urlElement.attr("href"))
-                    // Get thumbnail from the image tag, likely using data-src for lazy loading
                     thumbnail_url = element.selectFirst("img")?.attr("data-src")
-                    // Get title from the h3.film-name anchor
                     title = element.selectFirst("h3.film-name a")?.text() ?: "No Title"
                 }
-            }.getOrNull() // Use getOrNull to gracefully handle exceptions during mapping
-        }.filterNotNull() // Ensure no null elements remain after mapping
+            }.getOrNull()
+        }.filterNotNull()
 
-        // Check for next page link
         val hasNextPage = document.selectFirst("ul.pagination li.page-item a[title=next]") != null
         return AnimesPage(animeList, hasNextPage)
     }
 
     // =============================== Latest ===============================
-    // Reuse popular selectors as they often fetch the same layout
     override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/home?page=$page", headers)
     override fun latestUpdatesParse(response: Response): AnimesPage = popularAnimeParse(response)
 
@@ -88,7 +80,6 @@ class Anigo : ConfigurableAnimeSource, AnimeHttpSource() {
             genre = document.select("div.item:contains(Genre) a").joinToString(", ") { it.text() }
             status = parseStatus(document.selectFirst("div.item:contains(Status)")?.text())
             author = document.selectFirst("div.item:contains(Studio) a")?.text()
-            // Thumbnail might already be set from popular/search, but confirm here if needed
             thumbnail_url = thumbnail_url ?: document.selectFirst("img.film-poster-img")?.attr("data-src")
         }
     }
@@ -103,79 +94,65 @@ class Anigo : ConfigurableAnimeSource, AnimeHttpSource() {
     }
 
     // ============================== Episodes ==============================
-    // Uses the observed selector for episode list
     override fun episodeListParse(response: Response): List<SEpisode> {
         val document = response.asJsoup()
         return document.select("ul.ss-list a").mapNotNull { element ->
-             runCatching {
+            runCatching {
                 SEpisode.create().apply {
-                    // Get the episode URL
                     setUrlWithoutDomain(element.attr("href"))
-                    // Get the episode name, defaulting to "Episode" if not found
                     name = element.selectFirst("span.ssli-order")?.text() ?: "Episode"
-                    // Attempt to extract episode number from the URL (e.g., .../episode-5 -> 5)
                     val epNumMatch = Regex("-(\\d+)(?:[^\\d]|$)").find(element.attr("href"))
                     episode_number = epNumMatch?.groupValues?.get(1)?.toFloatOrNull() ?: 0F
                 }
-             }.getOrNull()
+            }.getOrNull()
         }.filterNotNull()
     }
 
     // ============================ Video Links =============================
-    // This is the crucial part based on the likely AJAX structure observed
     override fun videoListParse(response: Response): List<Video> {
         val document = response.asJsoup()
         val videoList = mutableListOf<Video>()
 
-        // Find server items which likely contain data attributes needed for AJAX calls
         document.select("div.server-item").forEach { serverElement ->
-            val serverName = serverElement.attr("data-type") ?: "Unknown Server" // Default name if not found
+            val serverName = serverElement.attr("data-type") ?: "Unknown Server"
             val dataId = serverElement.attr("data-id")
 
             if (dataId.isNotEmpty()) {
                 try {
-                    // Construct the AJAX endpoint URL using the data-id
                     val ajaxUrl = "$baseUrl/ajax/episode/sources/$dataId"
                     val ajaxHeaders = headers.newBuilder()
-                        .add("X-Requested-With", "XMLHttpRequest") // Common header for AJAX requests
+                        .add("X-Requested-With", "XMLHttpRequest")
                         .build()
                     val ajaxResponse = client.newCall(GET(ajaxUrl, ajaxHeaders)).execute()
                     val ajaxResponseBody = ajaxResponse.body?.string()
 
                     if (ajaxResponse.isSuccessful && !ajaxResponseBody.isNullOrEmpty()) {
-                        // Parse the AJAX response (likely HTML fragment containing source info)
                         val ajaxDoc = ajaxResponseBody.asJsoup()
 
-                        // Look for video source elements within the AJAX response
                         ajaxDoc.select("source").forEach { sourceElement ->
                             val videoUrl = sourceElement.attr("src")
                             val qualityLabel = sourceElement.attr("label") ?: "Default"
-                            val resolution = sourceElement.attr("size")?.toIntOrNull() // Get resolution if available
-                            val quality = if (resolution != null) "${resolution}p - $serverName" else "$serverName - $qualityLabel"
+                            val resolution = sourceElement.attr("size")?.toIntOrNull()
+                            val quality = if (resolution != null) {
+                                "${resolution}p - $serverName"
+                            } else {
+                                "$serverName - $qualityLabel"
+                            }
 
-                            if (videoUrl.startsWith("http")) { // Ensure it's a valid URL
-                                videoList.add(Video(videoUrl, quality, videoUrl, headers = headers)) // Pass headers if needed by video server
+                            if (videoUrl.startsWith("http")) {
+                                videoList.add(Video(videoUrl, quality, videoUrl, headers = headers))
                             }
                         }
-
-                    } else {
-                         // Log or handle potential failure in AJAX call if needed for debugging
-                         // println("Failed to fetch AJAX response for data-id: $dataId, Status: ${ajaxResponse.code}")
                     }
                 } catch (e: Exception) {
-                    // Log the error and continue with other servers if one fails
-                    // println("Error fetching video sources for data-id $dataId: ${e.message}")
-                    // e.printStackTrace()
+                    // Continue with other servers
                 }
             }
         }
-
-        // Filter out any videos that might not have loaded correctly
         return videoList.filter { !it.url.isNullOrEmpty() }
     }
 
     // ============================== Settings ==============================
-
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
         ListPreference(screen.context).apply {
             key = "preferred_quality"
@@ -191,17 +168,16 @@ class Anigo : ConfigurableAnimeSource, AnimeHttpSource() {
                 val entry = entryValues[index] as String
                 preferences.edit().putString(key, entry).commit()
             }
-        }.also(screen::addPreference) // Use the 'also' pattern like AnimeGG
+        }.also(screen::addPreference)
     }
 
     // ============================== Utilities =============================
-
     override fun List<Video>.sort(): List<Video> {
         val preferredQuality = preferences.getString("preferred_quality", "1080")
         val quality = preferredQuality ?: "1080"
-
         return sortedWith(
-            compareBy { it.quality.contains(quality, ignoreCase = true) }
-        ).reversed() // Put the preferred quality first
+            compareBy { it.quality.contains(quality, ignoreCase = true) },
+        ).reversed()
     }
 }
+

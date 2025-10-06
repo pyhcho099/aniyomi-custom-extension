@@ -1,12 +1,10 @@
-apply(plugin = "com.android.application")
-apply(plugin = "kotlin-android")
-
 ext {
-    extName = "Anigo"
-    pkgNameSuffix = "en.anigo"
-    extClass = ".Anigo"
+    extName = 'AniGo'
+    pkgNameSuffix = 'en.anigo'
+    extClass = '.Anigo'
     extVersionCode = 1
-    libVersion = "14"
+    libVersion = '14'
+    isNsfw = false
 }
 
-apply(from = "$rootDir/common.gradle")
+apply from: "$rootDir/common.gradle"

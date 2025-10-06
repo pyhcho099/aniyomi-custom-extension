@@ -20,12 +20,12 @@ jobs:
     - name: Grant execute permission
       run: chmod +x ./gradlew
     
-    - name: Build AniGo extension (debug version - no signing needed)
-      run: ./gradlew :anigo:assembleDebug
+    - name: Build AniGo extension
+      run: ./gradlew -p src assembleDebug
     
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
         name: anigo-debug-apk
-        path: src/en/anigo/build/outputs/apk/debug/*.apk
+        path: src/**/build/outputs/apk/debug/*.apk
         retention-days: 30
